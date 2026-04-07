@@ -1,0 +1,371 @@
+\documentclass{article}
+
+\usepackage[a4paper, margin=0.8in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{placeins}
+\usepackage{tikz}
+
+\title{\hspace*{1.5cm}\textbf{EE 341: Communication Systems \newline Assignment 2}}
+\author{G\ Raviteja (23110120) \ Govindu Vignesh (23110122)}
+\date{}
+
+\lstset{
+    language=Matlab,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    breaklines=true
+}
+\setlength{\abovedisplayskip}{8pt}
+\setlength{\belowdisplayskip}{8pt}
+
+\begin{document}
+
+\maketitle
+
+\section*{Submission Checklist}
+\begin{itemize}
+\item[$\rightarrow$] Theory derivations, assumptions, and interpretations are included.
+\item[$\rightarrow$] Reproducible code files:
+\begin{itemize}
+\item \texttt{solve\_q1\_quantizer.m}
+\item \texttt{solve\_q2\_radar.m}
+\item \texttt{run\_all.m}
+\end{itemize}
+\item[$\rightarrow$] Figures and summary files are generated directly in the main assignment folder.
+\item[$\rightarrow$] Numerical summaries are saved as \texttt{q1\_summary.mat} and \texttt{q2\_summary.mat}, and also printed in MATLAB Command Window.
+\end{itemize}
+
+This report is written in a theory-first manner. For each part, we first explain the communication-system intuition, then present the mathematical model, and finally connect the equations to what is expected in the generated plots/results. This mirrors practical engineering workflow: model the physics/statistics, design the receiver/quantizer structure, and then verify with data.
+
+\section{Q1. Uniform Quantizer Design for 5G OFDM Signals}
+
+The OFDM sample amplitude is modeled as a Gaussian random variable:
+\begin{equation*}
+X \sim \mathcal{N}(0,\sigma^2), \qquad
+f_X(x)=\frac{1}{\sqrt{2\pi}\sigma}e^{-x^2/(2\sigma^2)}.
+\end{equation*}
+
+For an 8-bit uniform quantizer with clipping at $\pm V_{\max}$ and loading factor
+\begin{equation*}
+\gamma = \frac{V_{\max}}{\sigma},
+\end{equation*}
+we balance two effects:
+\begin{itemize}
+\item[$\rightarrow$] granular noise (inside clipping range),
+\item[$\rightarrow$] overload noise (tails beyond clipping range).
+\end{itemize}
+
+Intuition: the OFDM waveform is a sum of many independently modulated subcarriers. By central-limit behavior, the time-domain sample histogram becomes close to Gaussian. This means low-amplitude samples are very common, while large peaks are rare but important. If the quantizer range is too narrow, rare peaks are clipped hard and create large error energy. If range is too wide, clipping reduces but quantization steps become coarse for the majority of samples near zero. Therefore, the best design must trade these two error mechanisms.
+
+\subsection*{Q1.1 Theory: Granular and Overload Noise}
+
+For a uniform quantizer with decision boundaries $\{b_k\}$ and reproduction levels $\{q_k\}$,
+the exact granular distortion inside the operating range is
+\begin{equation*}
+P_{q,\text{gran}} = \sum_k \int_{b_k}^{b_{k+1}} (x-q_k)^2 f_X(x)\,dx.
+\end{equation*}
+
+This expression says: for each quantization cell, we weight squared quantization error by the probability of landing in that cell, then sum over all cells.
+
+The overload distortion is caused by clipping beyond $\pm V_{\max}$:
+\begin{equation*}
+P_{q,\text{ol}} = \int_{V_{\max}}^{\infty}(x-V_{\max})^2f_X(x)\,dx
++\int_{-\infty}^{-V_{\max}}(x+V_{\max})^2f_X(x)\,dx.
+\end{equation*}
+
+Using symmetry:
+\begin{equation*}
+P_{q,\text{ol}} = 2\int_{V_{\max}}^{\infty}(x-V_{\max})^2f_X(x)\,dx.
+\end{equation*}
+
+Define
+\begin{equation*}
+\phi(\gamma)=\frac{1}{\sqrt{2\pi}}e^{-\gamma^2/2},
+\qquad
+Q(\gamma)=\int_{\gamma}^{\infty}\phi(u)\,du.
+\end{equation*}
+Then
+\begin{equation*}
+P_{q,\text{ol}} = 2\sigma^2\left[(1+\gamma^2)Q(\gamma)-\gamma\phi(\gamma)\right].
+\end{equation*}
+
+Sketch of reduction: set $x=\sigma u$, use $V_{\max}=\gamma\sigma$, and expand $(u-\gamma)^2=u^2-2\gamma u+\gamma^2$. The three Gaussian tail integrals reduce to standard identities involving $Q(\gamma)$ and $\phi(\gamma)$.
+
+For an 8-bit quantizer, the step size is
+\begin{equation*}
+\Delta = \frac{2V_{\max}}{2^B-1}, \qquad B=8.
+\end{equation*}
+Using the high-resolution approximation, the granular noise becomes
+\begin{equation*}
+P_{q,\text{gran}} \approx \frac{\Delta^2}{12}\,\Pr(|X|\leq V_{\max})
+=\frac{\Delta^2}{12}\left(1-2Q(\gamma)\right),
+\end{equation*}
+which captures that only non-clipped samples contribute to granular distortion.
+
+Total noise power:
+\begin{equation*}
+P_{q,\text{tot}} = P_{q,\text{gran}} + P_{q,\text{ol}}.
+\end{equation*}
+
+Hence, small $\gamma$ gives strong clipping (large overload noise), while large $\gamma$ increases $\Delta$ (large granular noise). The optimum $\gamma$ is where this tradeoff is minimized.
+
+Expected curve behavior:
+\begin{itemize}
+\item[$\rightarrow$] $P_{q,\text{ol}}$ decreases rapidly with $\gamma$ because Gaussian tails decay fast,
+\item[$\rightarrow$] $P_{q,\text{gran}}$ generally increases with $\gamma$ since $\Delta \propto V_{\max}$,
+\item[$\rightarrow$] total noise is U-shaped versus $\gamma$, producing a single practical optimum.
+\end{itemize}
+
+\subsection*{Q1.2 Numerical Sweep and Optimal Loading Factor}
+
+We sweep $\gamma$ over the practical range and compute
+\begin{equation*}
+\gamma_{\text{opt}}=\arg\min_{\gamma} P_{q,\text{tot}}(\gamma).
+\end{equation*}
+
+From the script output,
+\begin{equation*}
+\gamma_{\text{opt,theory}} \approx 3.926,
+\qquad
+\text{SQNR}_{\text{opt,theory}} \approx 40.57\ \text{dB}.
+\end{equation*}
+
+This optimum is physically reasonable for an 8-bit quantizer under Gaussian excitation: clipping is controlled enough to avoid heavy tail loss, while the step size remains fine for the high-probability central region.
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\includegraphics[width=\linewidth]{q1_theoretical_noise_vs_gamma.png}
+\caption{Theoretical granular, overload, and total quantization noise versus $\gamma$.}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\includegraphics[width=\linewidth]{q1_theoretical_sqnr_vs_gamma.png}
+\caption{Theoretical SQNR versus loading factor $\gamma$.}
+\end{minipage}
+\end{figure}
+
+\FloatBarrier
+
+\subsection*{Q1.3 Empirical SQNR with OFDM Dataset}
+
+For the measured OFDM sequence, the empirical SQNR is computed as
+\begin{equation*}
+\text{SQNR}_{\text{emp}} = 10\log_{10}\left(\frac{\mathbb{E}[x^2]}{\mathbb{E}[(x-\hat{x})^2]}\right).
+\end{equation*}
+
+Method used in the experiment:
+\begin{itemize}
+\item[$\rightarrow$] load OFDM samples from \texttt{ofdm\_dataset.mat},
+\item[$\rightarrow$] center data and estimate empirical $\sigma$,
+\item[$\rightarrow$] quantize for each $\gamma$ using $V_{\max}=\gamma\sigma$,
+\item[$\rightarrow$] compare empirical SQNR with the theoretical SQNR curve.
+\end{itemize}
+
+Why this comparison matters: the theoretical model assumes i.i.d. Gaussian samples and ideal quantization behavior. Real OFDM datasets can deviate due to finite packet length, pilot structure, windowing, and implementation details. The gap between curves is therefore a diagnostic, not just an error: it tells how realistic the Gaussian assumption is for the provided waveform.
+
+Interpretation guideline:
+\begin{itemize}
+\item[$\rightarrow$] close agreement with theory indicates near-Gaussian amplitude statistics,
+\item[$\rightarrow$] mismatch is expected from finite samples, imperfect Gaussianity, and practical OFDM waveform structure.
+\end{itemize}
+
+If the OFDM dataset is available, the script also writes:
+\begin{itemize}
+\item[$\rightarrow$] \texttt{q1\_theory\_vs\_empirical\_sqnr.png}
+\end{itemize}
+
+Using the provided dataset in this assignment, the empirical results are:
+\begin{equation*}
+\sigma_{\text{emp}} \approx 0.9999995,
+\qquad
+\gamma_{\text{opt,emp}} \approx 3.887,
+\qquad
+\text{SQNR}_{\text{opt,emp}} \approx 40.61\ \text{dB}.
+\end{equation*}
+These values are close to theoretical predictions, which supports the Gaussian approximation for the given OFDM samples.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.65\textwidth]{q1_theory_vs_empirical_sqnr.png}
+\caption{Theoretical and empirical SQNR comparison for the provided OFDM dataset.}
+\end{figure}
+
+\FloatBarrier
+
+\section{Q2. Radar Detection in Colored Noise}
+
+Given
+\begin{equation*}
+r[n] = s[n-n_0] + v[n],
+\end{equation*}
+where clutter is AR(1):
+\begin{equation*}
+v[n] = \alpha v[n-1] + w[n], \qquad w[n]\sim\mathcal{CN}(0,\sigma_w^2).
+\end{equation*}
+
+Intuition: the target echo is a delayed copy of known sequence $s[n]$, so correlation with $s[n]$ is the natural detector. However, clutter is not white; it has memory (strong low-frequency behavior). In such a case, naive matched filtering is no longer statistically optimal. Pre-whitening first removes clutter correlation so the subsequent correlation stage operates in a near-white-noise setting.
+
+\subsection*{Q2.1 Matched Filtering and Cross-Correlation Equivalence}
+For a complex pulse, matched filter is
+\begin{equation*}
+h(t)=s^*(T-t).
+\end{equation*}
+Filter output:
+\begin{equation*}
+y(t)=\int r(\tau)h(t-\tau)\,d\tau
+=\int r(\tau)s^*(T-(t-\tau))\,d\tau.
+\end{equation*}
+At $t=T$:
+\begin{equation*}
+y(T)=\int r(\tau)s^*(\tau)\,d\tau = R_{rs}(0).
+\end{equation*}
+Hence, matched-filter sampling at $T$ is equivalent to zero-lag cross-correlation.
+
+This equivalence is the key reason cross-correlation is used directly in discrete implementations: it is exactly the matched-filter operation under standard conventions.
+
+\subsection*{Q2.2 Estimation of $\alpha$ from Clutter-Only Samples}
+
+From first 500 clutter-only samples,
+\begin{equation*}
+\hat{\alpha}=\arg\min_{\alpha}\sum_{n=1}^{N-1}|v[n]-\alpha v[n-1]|^2
+=\frac{\sum_{n=1}^{N-1}v[n]v^*[n-1]}{\sum_{n=1}^{N-1}|v[n-1]|^2}.
+\end{equation*}
+
+This estimator is the complex least-squares/Yule-Walker form for AR(1), obtained by orthogonality of the residual with the regressor $v[n-1]$.
+
+Detailed derivation idea:
+\begin{itemize}
+\item[$\rightarrow$] define cost $J(\alpha)=\sum |v[n]-\alpha v[n-1]|^2$,
+\item[$\rightarrow$] take Wirtinger derivative with respect to $\alpha^*$,
+\item[$\rightarrow$] set derivative to zero to obtain normal equation,
+\item[$\rightarrow$] solve for ratio of lag-1 cross-term to lag-0 energy term.
+\end{itemize}
+
+\subsection*{Q2.3 FIR Pre-whitening Filter}
+
+Using $v[n]-\alpha v[n-1]=w[n]$, choose
+\begin{equation*}
+H_w(z)=1-\hat{\alpha}z^{-1},
+\end{equation*}
+with impulse response
+\begin{equation*}
+h_w[n]=\delta[n]-\hat{\alpha}\delta[n-1].
+\end{equation*}
+
+This filter cancels the AR(1) memory term and leaves approximately white innovation noise, making matched filtering closer to the optimal AWGN condition.
+
+Frequency-domain view: AR(1) clutter has PSD proportional to $1/|1-\alpha e^{-j\omega}|^2$. Multiplying by $|1-\hat{\alpha}e^{-j\omega}|^2$ flattens this spectrum when $\hat{\alpha}\approx\alpha$.
+
+\subsection*{Q2.4 Receiver Architectures}
+\begin{itemize}
+\item[$\rightarrow$] Receiver A (Naive): cross-correlate raw $r[n]$ with raw $s[n]$.
+\item[$\rightarrow$] Receiver B (Whitened): pre-whiten both $r[n]$ and $s[n]$, then cross-correlate.
+\end{itemize}
+
+Receiver B is expected to improve peak prominence and output SNR because strong low-frequency clutter energy is flattened before correlation.
+
+Engineering expectation in plots:
+\begin{itemize}
+\item[$\rightarrow$] Receiver A: elevated background floor and weaker peak-to-floor contrast,
+\item[$\rightarrow$] Receiver B: cleaner floor and sharper dominant peak near true delay.
+\end{itemize}
+
+Output SNR metric:
+\begin{equation*}
+\text{SNR}_{\text{out}} = 10\log_{10}
+\left(\frac{|C[k_{\text{peak}}]|^2}{\mathbb{E}\{|C[k]|^2\,\text{outside}\,[k_{\text{peak}}-50,k_{\text{peak}}+50]\}}\right).
+\end{equation*}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\includegraphics[width=\linewidth]{q2_receiver_A_xcorr_db.png}
+\caption{Receiver A (naive) cross-correlation magnitude in dB.}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\includegraphics[width=\linewidth]{q2_receiver_B_xcorr_db.png}
+\caption{Receiver B (whitened) cross-correlation magnitude in dB.}
+\end{minipage}
+\end{figure}
+
+\FloatBarrier
+
+If radar dataset is present, fill results from MATLAB output (Command Window) or \texttt{q2\_summary.mat}:
+\begin{itemize}
+\item[$\rightarrow$] Estimated AR parameter: $\hat{\alpha} \approx 0.94935 + j\,0.00303$.
+\item[$\rightarrow$] Receiver A peak lag: $2149$ samples.
+\item[$\rightarrow$] Receiver A output SNR: $13.77$ dB.
+\item[$\rightarrow$] Receiver B peak lag: $2149$ samples.
+\item[$\rightarrow$] Receiver B output SNR: $28.25$ dB.
+\item[$\rightarrow$] SNR gain $(B-A)$: $14.48$ dB.
+\end{itemize}
+
+When both receivers are run on the same dataset, compare:
+\begin{itemize}
+\item[$\rightarrow$] peak lag consistency (target delay estimate),
+\item[$\rightarrow$] output SNR improvement in Receiver B,
+\item[$\rightarrow$] sidelobe/noise-floor suppression in dB plots.
+\end{itemize}
+
+If whitening is effective, peak lag should remain consistent while SNR increases. A large lag mismatch would indicate model mismatch, estimation error in $\hat{\alpha}$, or severe non-AR clutter components.
+
+\section{Q3. Raised Cosine (RC) Filter}
+
+Given the piecewise raised-cosine spectrum $H_{RC}(f)$, inverse Fourier transform gives the well-known Nyquist pulse:
+\begin{equation*}
+h_{RC}(t) = \frac{\sin(\pi t/T)}{\pi t/T}
+\cdot
+\frac{\cos(\pi \beta t/T)}{1-(2\beta t/T)^2}.
+\end{equation*}
+
+Special values by continuity are:
+\begin{equation*}
+h_{RC}(0)=1,
+\qquad
+h_{RC}\left(\pm\frac{T}{2\beta}\right)=\frac{\beta}{2}\sin\left(\frac{\pi}{2\beta}\right),\;\beta\neq 0.
+\end{equation*}
+
+Derivation outline (conceptual): split the inverse transform into flat passband and cosine roll-off band. The flat portion contributes the sinc term, and the roll-off contributes the cosine-modulated denominator term, leading to the compact closed form.
+
+Physical meaning:
+\begin{itemize}
+\item[$\rightarrow$] $\beta$ controls excess bandwidth: larger $\beta$ means wider spectrum but shorter time-domain ringing,
+\item[$\rightarrow$] the pulse satisfies the Nyquist zero-ISI criterion at symbol-spaced sampling instants.
+\end{itemize}
+
+Extreme cases:
+\begin{itemize}
+\item[$\rightarrow$] $\beta \to 0$: spectrum tends to ideal brick-wall shape, time-domain ringing becomes long,
+\item[$\rightarrow$] $\beta \to 1$: transition band is widest, pulse decays faster in time and implementation is more robust to truncation.
+\end{itemize}
+
+\section*{How to Reproduce Results}
+Run from assignment folder:
+\begin{lstlisting}
+run('run_all.m')
+\end{lstlisting}
+
+Current workspace status:
+\begin{itemize}
+\item[$\rightarrow$] Q1 theoretical figures compile and generate correctly.
+\item[$\rightarrow$] Q1 theory optimum values are verified: $\gamma_{\text{opt}}\approx 3.926$, SQNR $\approx 40.57$ dB.
+\item[$\rightarrow$] Q1 empirical curve has been generated using \texttt{ofdm\_dataset.mat}.
+\item[$\rightarrow$] Q2 final numeric outputs and plots have been generated using \texttt{cazac\_radar\_dataset.mat}.
+\end{itemize}
+
+\section*{Conclusion}
+The assignment highlights a common communication-systems design pattern: statistical modeling and receiver/ADC structure must be co-designed. In Q1, the best loading factor appears from balancing two competing distortions rather than minimizing either one alone. In Q2, optimal detection in correlated clutter is achieved by transforming the noise statistics (whitening) before matched filtering. In Q3, raised-cosine design shows the fundamental time-frequency tradeoff in pulse shaping through $\beta$.
+
+\end{document}
