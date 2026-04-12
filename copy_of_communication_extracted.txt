@@ -1,0 +1,161 @@
+﻿EE 341:Communication Systems
+Assignment 2
+Padisetti J S Srikar(23110227)
+Panga Viswanadham(23110228)
+Q1) Uniform Quantizer Design for 5G OFDM Signals.
+1.The total quantization noise power, Pq,tot, is the sum of the granular noise power (Pq,gran) inside the ADC’s operating range, and the overload noise power (Pq,ol) caused by the clipped tails of the distribution. Assuming the OFDM signal follows a perfect Gaussian probability density function with mean 0 and variance σ2, formulate the exact mathematical integrals and expressions to represent Pq,gran and Pq,ol as a function of Vmax and the OFDM signal variance σ2.
+Let the sampled OFDM signal be modeled as a zero-mean Gaussian random variable
+xN(0 ,)
+with probability density function (PDF)
+PX(x)=
+It has 8-bit uniform mid-tread ADC has and the number of quantization levels are
+L==256
+Symmetric operation range is between [-Vmax, Vmax] and the each quantization step size is 
+△=
+From the given question the total quantization noise is given by:
+Pq,tot​=Pq,gran​+Pq,ol​
+Where 
+P q,gran ​ → granular (inside range)
+P q,ol ​ → overload/clipping noise (outside range)
+Granular Noise Power 𝑃 𝑞 , gran P q,gran ​
+Inside the ADC range ∣x∣≤Vmax⁡ the quantization error is bounded
+The Variance of the quantization noise is
+=
+=
+=
+But this noise exists only when the signal lies inside the ADC range, therefore it must be weighted by the probability that the input is not clipped. 
+Probability that signal lies inside range
+=
+=
+Granular Noise Power is 
+P q,gran=
+P q,gran=
+Overload (Clipping) Noise Power P q,ol ​is
+This is valid only in the range of |x|>Vmax
+the ADC saturates:
+xq​ is Vmax for x> Vmax and -Vmax for x<Vmax and the error equals the difference between actual signal and clipped value.
+Positive Tail error power is 
+Negative Tail error power is 
+Total overload noise
+P q,ol = +
+Because the Gaussian PDF is symmetric:
+P q,ol =
+Total quantization noise is 
+Pq,tot​=Pq,gran​+Pq,ol​
+Pq,tot = +
+ 2) (C) In practice, engineers define the ratio of the clipping threshold to the RMS voltage of the signal as the loading factor, γ =Vmax/σ. Numerically evaluate your theoretical expressions from Q1.1. Plot the theoretical Pq,gran, Pq,ol, and Pq,tot as a function of the loading factor. From your graphical analysis, identify the theoretical optimal loading factor, γopt, that minimizes the total quantization noise for an 8-bit uniform quantizer.
+To describe this trade-off, engineers define the loading factor
+γ  = 
+which represents how large the ADC range is compared to the signal RMS value. 
+Small γ → heavy clipping.
+Large γ → poor resolution.
+Theoretical integrals do not have simple closed forms, therefore we evaluate numerically.
+Choose loading factor range
+0.5≤ γ ≤6
+For different values of the loading factor γ, the ADC clipping level is first calculated usingV max ​ =γσ. Using this value, the quantization step size is obtained as Δ=2 𝑉max ⁡/𝐿 where 𝐿 = 256 for an 8-bit quantizer. The Gaussian probability density function of the OFDM signal is then used to numerically evaluate the required integrals. From these calculations, the granular noise power (inside the ADC range) and the overload noise power (due to clipping outside the range) are determined. The total quantization noise is obtained by adding both noise components. Finally, these noise powers are plotted as functions of the loading factor γ, and the minimum point of the total noise curve gives the optimal loading factor.
+From the graph the optimal loading factor γopt is equal to the 3.929 where that minimizes the total quantization noise for an 8-bit uniform quantizer.
+3) You have been provided with a raw baseband dataset, ofdm dataset.mat, representing the discrete time-domain samples of an unquantized 5G OFDM transmission.
+(a) Write a script to pass this array through a simulated 8-bit uniform quantizer.
+The received OFDM signal samples were first loaded from the dataset and converted into a column vector for processing. The signal power was calculated as
+Ps​=E[ ]
+using the mean squared magnitude of the samples. An 8-bit uniform mid-tread quantizer was implemented. For an 8-bit ADC, L==256 quantization levels are available.
+For a chosen clipping threshold Vmax​, the quantization step size is where b=8. 
+The quantization process consisted of two steps:
+Clipping (Saturation)
+The input signal was limited to the ADC operating range
+xclipped​=min(max(x,−Vmax​),Vmax​)
+Uniform Quantization
+xq​=Δ⋅round()
+(b) Sweep your physical clipping threshold (Vmax) across the same range used in Q1.2.
+To find the optimal balance between granular and overload noise, the script sweeps the Loading Factor (γ) from 1 to 6.
+Vmax Calculation: For each step, Vmax is dynamically updated as γ.where  is the standard deviation of the provided dataset.
+Significance: This sweep allows us to visualize the "convex" nature of the SQNR curve, where the peak represents the most efficient use of the 8-bit dynamic range.
+(c) At each step, calculate the empirical SQNR of the quantized dataset.
+For each clipping level, the quantization noise was obtained as
+n=x−xq​
+The empirical noise power is Pn​=E[ ]and the empirical Signal-to-Quantization-Noise Ratio (SQNR) becomes SQNRemp​=
+which was later expressed in decibels: SQNRemp,dB ​ =10log10 ​(SQNR emp ​ )
+Log
+(d) Compute the empirical SQNR and the theoretical SQNR curve, as a function of the loading factor. Does the real-world dataset perfectly follow your theoretical Gaussian assumptions? Briefly explain the physical implications of any discrepancies.
+Comparison Between Empirical and Theoretical Results 
+The empirical and theoretical SQNR curves show similar overall behavior: 
+SQNR increases initially as clipping reduces. 
+A maximum SQNR occurs at an optimal loading factor. 
+SQNR decreases for large loading factors due to increased granular noise.
+Reasons for the Discrepancies 
+The theoretical model assumes: 
+perfectly Gaussian signal distribution, 
+infinitely many OFDM subcarriers, 
+independent samples, 
+ideal hardware conditions. 
+In practice, the measured OFDM dataset shows small deviations because: 
+the number of subcarriers is finite, 
+OFDM signals exhibit peak-to-average power variations,
+transmitter filtering and channel effects modify statistics, 
+practical signals are not perfectly Gaussian.
+These discrepancies indicate that while Gaussian modeling is an excellent approximation for OFDM signals, real communication waveforms contain practical non-idealities. Nevertheless, the close agreement between empirical and theoretical SQNR confirms that Gaussian-based ADC design principles remain valid for real 5G receivers.
+PAPR Reduction Techniques: Real-world 5G signals often undergo Crest Factor Reduction (CFR) before transmission. This limits the peaks of the signal more than a pure Gaussian distribution would. If the empirical curve shows a higher SQNR at low γ than theory predicts, it suggests the signal peaks are less frequent than in a perfect Gaussian model.
+Subcarrier Correlation: The theoretical model assumes subcarriers are independent and identically distributed . However, in 5G, specific Pilot Symbols and Cyclic Prefixes (CP) introduce correlations. This can cause the "tails" of the signal's probability density function to be heavier or lighter than a standard normal distribution.
+The "Sweet Spot" Shift: If the empirical γopt is higher than the theoretical value, it indicates a signal with a higher Peak-to-Average Power Ratio (PAPR), requiring a wider ADC range to avoid destructive clipping.
+Q(γ)=erfc
+erfc(x)=dt
+Pol​=[(1+)Q(γ) -]
+Q2) In this question, you will build a radar receiver to detect a target using a complex-valued constant amplitude zero auto- correlation (CAZAC) Zadoff-Chu sequence, which has been given to you. The sampled received signal r[n] is corrupted by heavy, low-frequency “clutter” (colored noise), which breaks the standard Additive White Gaussian Noise (AWGN) assumption. You have been provided a dataset (cazac radar dataset.mat) containing
+1)  (T) To set the stage for the rest of the question, we need to prove equivalence between cross-correlation and matched filtering. For a complex-valued continuous-time pulse h(t), the matched filter is given by h(t) = s ∗ (T − t), where T is the pulse duration. Prove mathematically that passing a received signal r(t) through this filter and sampling the output at exactly t = T is equivalent to computing the cross-correlation of r(t) and s(t) evaluated at a lag of zero.
+We need to prove that passing the received signal r(t) through the matched filter h(t) and sampling at t = T yields the cross-correlation at lag zero.
+The output y(t) of a continuous-time LTI system is the convolution of the input r(t) and the filter's impulse response h(t):
+The given impulse response of the matched filter is: 
+Substituting (t - τ) into the matched filter:
+Putting this equation in the convolution integral:
+Since we are sampling the output exactly at t = T, 
+The standard definition for the cross-correlation of two deterministic signals r(t) and s(t) evaluated at a lag of zero is: 
+Comparing these two results, we get: . This mathematically proves that sampling the matched filter output at t=T is strictly equivalent to computing the cross-correlation at a lag of zero.
+2) (C + T) At the radar receiver, the received signal is sampled to get r[n]. This is modeled as the delayed reference sequence plus additive colored noise (clutter)
+Given that 
+We are also given that the first N = 500 samples contain only the background clutter, meaning r[n] = v[n] for n = 1, 2, …., N
+To estimate , we can use the Yule-Walker equations, which relate the autoregressive parameters to the signal's autocorrelation function.First, multiply both sides of the AR(1) difference equation by the complex conjugate of the previous sample, :
+Next, take the statistical expectation E[.] of both sides:
+]
+Because w[n] is white noise, it is completely uncorrelated with all past values of the clutter. Therefore ]= 0. This is true because w[n] is additive white noise gaussian. By definition, white noise is uncorrelated with any past samples. Since the current clutter sample v[n] is built from the previous sample v[n-1] plus a new random innovation $w[n]$, that new innovation has no statistical relationship with the past. This "wipes out" the noise term from the equation, leaving only the relationship between the current and previous clutter samples.
+The equation simplifies to:
+To compute this empirically using our N = 500 signal-free samples, we replace the true mathematical expectations with their sample averages (the Least Squares estimator):
+Based on this relation, the numerical value of α is computed from the code, and the results are as follows:
+Computed numerical value for alpha: 0.949353 + 0.003035i
+3 (T) Using your estimate , design a discrete-time Finite Impulse Response (FIR) pre-whitening filter hw[n] that will “flatten” the Power Spectral Density (PSD) of the incoming clutter. Write out the transfer function Hw(z) and the impulse response hw[n] in your report.
+The goal of a pre-whitening filter is to take an input signal corrupted by colored noise (clutter) and output a signal where the noise component is "white" (i.e., having a flat Power Spectral Density)
+We are given that the clutter v[n] is modeled as a first-order Autoregressive AR(1) process:
+where w[n] is complex Additive White Gaussian Noise (AWGN).
+First, let's find the Z-transform of the clutter generation model. Applying the Z-transform to both sides of the AR(1) difference equation yields:
+Rearranging to solve for the transfer function that generates the clutter from white noise:
+The generation transfer function H_clutter is the ratio of output clutter to input white noise:
+A pre-whitening filter does the exact opposite: it takes the colored noise v[n] as an input and outputs the original white noise w[n]. Therefore, the transfer function of the whitening filter, Hw(z), must be the mathematical inverse of the clutter generation filter:
+Since the true value of  is unknown and you have derived an estimate  in the previous question, the final transfer function for your designed filter is
+To find the discrete-time impulse response, we take the inverse Z-transform of Hw(z).
+The inverse Z-transform of 1 is the unit impulse δ[n] and the inverse Z-transform of  is a delayed unit impulse δ[n-1].
+Therefore, the impulse response is δ[n-1].
+This defines a simple 2-tap Finite Impulse Response (FIR) filter. When you implement this in your code for the next section, you will use the filter coefficients [1, ].
+2.4) Receiver Architectures: Signal Processing Implementation
+Mathematical Models
+The target detection is performed using two parallel receiver architectures to evaluate the impact of colored noise on matched filter performance.
+1. Receiver A (Naive Matched Filter): This architecture applies a standard matched filter directly to the raw received signal. In the discrete-time domain, this is implemented as the cross-correlation between the received signal r[n] and the known reference sequence s[n]:
+Where  represents the filter output at lag m.
+2. Receiver B (Optimal Whitened Matched Filter): This architecture utilizes the FIR pre-whitening filter designed in Section 2.3 to process both the received signal and the reference sequence prior to correlation. The intermediate whitened signals are mathematically defined as:
+The optimal detection statistic is then obtained by cross-correlating these whitened outputs:
+Design Logic and Justification:
+The standard matched filter (Receiver A) is mathematically optimal for maximizing the Signal-to-Noise Ratio (SNR) strictly under the assumption of Additive White Gaussian Noise (AWGN). However, the received signal r[n] is corrupted by low-frequency clutter (colored noise) modeled as an AR(1) process. Because Receiver A ignores the spectral coloring of the noise, it integrates this correlated clutter alongside the signal, which theoretically leads to a degraded, noisy correlation peak and poor target detection.
+Receiver B represents the optimal detection strategy for this environment. By passing the received signal through the pre-whitening filter , the power spectral density of the AR(1) clutter is mathematically flattened, converting the colored noise back into an equivalent AWGN process. To maintain the validity of the matched filter, the exact same transformation  must be applied to the reference sequence s[n]. Correlating these two whitened sequences perfectly satisfies the AWGN assumption required by matched filter theory, thereby maximizing the output SNR and providing a theoretically sharper detection peak.
+The Power Spectral Density (PSD) comparison validates the pre-whitening filter design, demonstrating that the prominent low-frequency power spike of the AR(1) clutter in the raw signal is successfully flattened into a uniform, white-noise spectrum. Consequently, the output of Receiver A (Naive Matched Filter) illustrates a failure in detection; because it ignores the spectral coloring of the noise, the resulting cross-correlation suffers from a severe noise floor that completely obscures the target. In contrast, Receiver B operates on the pre-whitened sequences, successfully satisfying the AWGN assumption required for matched filtering. This results in a significantly suppressed noise floor and a distinct, sharp detection peak, proving the theoretical necessity and effectiveness of the optimal whitened matched filter in colored noise environments.
+2.5) Detection Peak and Empirical Output SNR Analysis
+To quantify and compare the performance of the two receiver architectures, we calculate the empirical Output Signal-to-Noise Ratio (SNR) based on the cross-correlation outputs.
+1. Peak Identification and Signal Power: The target detection point is identified by locating the sample index, , that corresponds to the maximum magnitude in the cross-correlation output. The signal power, , at this detection point is defined as the squared magnitude of the peak:
+Where y[m] represents the cross-correlation sequence for either receiver A or B.
+2. Noise Power Estimation: To estimate the noise floor without incorporating the signal's energy (which inherently spreads to adjacent samples due to correlation sidelobes), we exclude a window of ±50 samples centered around the detection peak . The noise power, , is computed as the variance of the remaining complex cross-correlation samples outside this exclusion window.
+3. Output SNR Calculation: The final empirical SNR is calculated in decibels (dB) using the ratio of the calculated signal power to the estimated noise power:
+Applying this methodology to the simulated receiver outputs yielded the following results:
+Receiver A (Naive Matched Filter):
+Detection Peak Index (Lag): 2149
+Empirical Output SNR: 13.77 dB
+Receiver B (Optimal Whitened Matched Filter):
+Detection Peak Index (Lag): 2149
+Empirical Output SNR: 28.25 dB
+Both receivers correctly identified the target echo at a sample lag of 2149. However, Receiver B yielded an approximate 14.5 dB improvement in empirical Output SNR over Receiver A. This numeric result perfectly quantifies the visual evidence from the previous section: by successfully whitening the AR(1) clutter and satisfying the AWGN assumption, Receiver B effectively suppresses the out-of-bounds noise variance and delivers a vastly superior detection peak.

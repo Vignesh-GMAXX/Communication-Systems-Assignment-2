@@ -48,6 +48,11 @@ s_w = filter(b, a, s);
 peak_lag_b = lags_b(peak_idx_b);
 snr_b_db = output_snr_db(c_b, peak_idx_b, 50);
 
+% PSD evidence for whitening performance on clutter-only segment
+v_w = filter(b, a, v_train);
+[f_psd, psd_v_db] = simple_psd_db(v_train, 2048);
+[~, psd_vw_db] = simple_psd_db(v_w, 2048);
+
 f1 = figure('Visible', 'off');
 plot(lags_a, c_a_db, 'LineWidth', 1.1); hold on;
 xline(peak_lag_a, '--k', sprintf('Peak lag=%d', peak_lag_a));
@@ -71,6 +76,30 @@ title('Q2 Receiver B: Whitened matched filter');
 legend({'Receiver B', 'Peak lag'}, 'Location', 'best');
 saveas(f2, fullfile(workdir, 'q2_receiver_B_xcorr_db.png'));
 close(f2);
+
+f3 = figure('Visible', 'off');
+plot(f_psd, psd_v_db, 'LineWidth', 1.2); hold on;
+plot(f_psd, psd_vw_db, 'LineWidth', 1.2);
+grid on;
+xlabel('Normalized frequency (cycles/sample)');
+ylabel('PSD (dB, normalized)');
+title('Q2: Clutter PSD before and after pre-whitening');
+legend({'Raw clutter v[n]', 'Whitened clutter v_w[n]'}, 'Location', 'best');
+saveas(f3, fullfile(workdir, 'q2_psd_before_after_whitening.png'));
+close(f3);
+
+f4 = figure('Visible', 'off');
+plot(lags_a, c_a_db, 'LineWidth', 1.0); hold on;
+plot(lags_b, c_b_db, 'LineWidth', 1.0);
+xline(peak_lag_a, '--k', sprintf('Peak lag=%d', peak_lag_a));
+grid on;
+ylim([-100, 2]);
+xlabel('Lag (samples)');
+ylabel('|Cross-correlation| (dB, normalized)');
+title('Q2: Receiver A vs Receiver B comparison');
+legend({'Receiver A (raw)', 'Receiver B (whitened)', 'Detected lag'}, 'Location', 'best');
+saveas(f4, fullfile(workdir, 'q2_receivers_overlay_db.png'));
+close(f4);
 
 summary = struct();
 summary.radar_dataset_found = true;
@@ -123,4 +152,13 @@ function snr_db = output_snr_db(corr_vec, peak_idx, exclusion)
 
     noise_power = mean(mag2(mask));
     snr_db = 10 * log10(signal_power / noise_power);
+end
+
+function [f, p_db] = simple_psd_db(x, nfft)
+    x = x(:);
+    x = x - mean(x);
+    X = fftshift(fft(x, nfft));
+    p = abs(X).^2;
+    p_db = 10 * log10(p ./ (max(p) + eps) + eps);
+    f = linspace(-0.5, 0.5, nfft);
 end

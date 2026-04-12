@@ -73,6 +73,8 @@ P_{q,\text{gran}} = \sum_k \int_{b_k}^{b_{k+1}} (x-q_k)^2 f_X(x)\,dx.
 
 This expression says: for each quantization cell, we weight squared quantization error by the probability of landing in that cell, then sum over all cells.
 
+For a mid-tread uniform quantizer, this exact sum-of-integrals is the rigorous model. In practice, for high-resolution operation, the error within each cell is approximately uniform over $[-\Delta/2,\Delta/2]$, giving per-cell error variance $\Delta^2/12$. This approximation is very accurate when $\Delta$ is small relative to local signal variation scale.
+
 The overload distortion is caused by clipping beyond $\pm V_{\max}$:
 \begin{equation*}
 P_{q,\text{ol}} = \int_{V_{\max}}^{\infty}(x-V_{\max})^2f_X(x)\,dx
@@ -97,6 +99,16 @@ P_{q,\text{ol}} = 2\sigma^2\left[(1+\gamma^2)Q(\gamma)-\gamma\phi(\gamma)\right]
 
 Sketch of reduction: set $x=\sigma u$, use $V_{\max}=\gamma\sigma$, and expand $(u-\gamma)^2=u^2-2\gamma u+\gamma^2$. The three Gaussian tail integrals reduce to standard identities involving $Q(\gamma)$ and $\phi(\gamma)$.
 
+Using standard Gaussian identities,
+\begin{equation*}
+\int_{\gamma}^{\infty}\phi(u)du = Q(\gamma),
+\qquad
+\int_{\gamma}^{\infty}u\phi(u)du = \phi(\gamma),
+\qquad
+\int_{\gamma}^{\infty}u^2\phi(u)du = Q(\gamma)+\gamma\phi(\gamma),
+\end{equation*}
+the overload integral simplifies directly to the compact expression used above.
+
 For an 8-bit quantizer, the step size is
 \begin{equation*}
 \Delta = \frac{2V_{\max}}{2^B-1}, \qquad B=8.
@@ -112,6 +124,12 @@ Total noise power:
 \begin{equation*}
 P_{q,\text{tot}} = P_{q,\text{gran}} + P_{q,\text{ol}}.
 \end{equation*}
+
+The corresponding theoretical SQNR is
+\begin{equation*}
+\text{SQNR}_{\text{th}}(\gamma)=10\log_{10}\left(\frac{\sigma^2}{P_{q,\text{tot}}(\gamma)}\right).
+\end{equation*}
+For normalized analysis ($\sigma^2=1$), this reduces to $10\log_{10}(1/P_{q,\text{tot}})$.
 
 Hence, small $\gamma$ gives strong clipping (large overload noise), while large $\gamma$ increases $\Delta$ (large granular noise). The optimum $\gamma$ is where this tradeoff is minimized.
 
@@ -138,6 +156,13 @@ From the script output,
 
 This optimum is physically reasonable for an 8-bit quantizer under Gaussian excitation: clipping is controlled enough to avoid heavy tail loss, while the step size remains fine for the high-probability central region.
 
+Design-logic interpretation:
+\begin{itemize}
+\item[$\rightarrow$] For $\gamma<\gamma_{\text{opt}}$, overload dominates and SQNR drops sharply.
+\item[$\rightarrow$] Around $\gamma_{\text{opt}}$, overload and granular distortions are balanced.
+\item[$\rightarrow$] For $\gamma>\gamma_{\text{opt}}$, clipping is negligible but coarse quantization dominates.
+\end{itemize}
+
 \begin{figure}[H]
 \centering
 \begin{minipage}{0.48\textwidth}
@@ -151,6 +176,20 @@ This optimum is physically reasonable for an 8-bit quantizer under Gaussian exci
 \includegraphics[width=\linewidth]{q1_theoretical_sqnr_vs_gamma.png}
 \caption{Theoretical SQNR versus loading factor $\gamma$.}
 \end{minipage}
+\end{figure}
+
+\FloatBarrier
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\textwidth]{q2_psd_before_after_whitening.png}
+\caption{PSD comparison of clutter before and after pre-whitening.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\textwidth]{q2_receivers_overlay_db.png}
+\caption{Overlay comparison of Receiver A and Receiver B cross-correlation outputs in dB.}
 \end{figure}
 
 \FloatBarrier
@@ -193,6 +232,12 @@ Using the provided dataset in this assignment, the empirical results are:
 \end{equation*}
 These values are close to theoretical predictions, which supports the Gaussian approximation for the given OFDM samples.
 
+A useful consistency check is the shift in optimum loading factor:
+\begin{equation*}
+\Delta\gamma = \gamma_{\text{opt,emp}}-\gamma_{\text{opt,theory}} \approx -0.039.
+\end{equation*}
+The small shift indicates mild practical non-idealities, but no major mismatch with the Gaussian-design assumption.
+
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.65\textwidth]{q1_theory_vs_empirical_sqnr.png}
@@ -214,6 +259,8 @@ v[n] = \alpha v[n-1] + w[n], \qquad w[n]\sim\mathcal{CN}(0,\sigma_w^2).
 
 Intuition: the target echo is a delayed copy of known sequence $s[n]$, so correlation with $s[n]$ is the natural detector. However, clutter is not white; it has memory (strong low-frequency behavior). In such a case, naive matched filtering is no longer statistically optimal. Pre-whitening first removes clutter correlation so the subsequent correlation stage operates in a near-white-noise setting.
 
+Hence, this problem is not only about implementing correlation, but about correcting the noise statistics first so that matched-filter optimality assumptions are restored.
+
 \subsection*{Q2.1 Matched Filtering and Cross-Correlation Equivalence}
 For a complex pulse, matched filter is
 \begin{equation*}
@@ -231,6 +278,12 @@ y(T)=\int r(\tau)s^*(\tau)\,d\tau = R_{rs}(0).
 Hence, matched-filter sampling at $T$ is equivalent to zero-lag cross-correlation.
 
 This equivalence is the key reason cross-correlation is used directly in discrete implementations: it is exactly the matched-filter operation under standard conventions.
+
+Equivalent discrete-time statement used in code:
+\begin{equation*}
+y[m] = \sum_n r[n]s^*[n-m] = (r \star s)[m].
+\end{equation*}
+Therefore the detection statistic is the cross-correlation peak over lag index $m$.
 
 \subsection*{Q2.2 Estimation of $\alpha$ from Clutter-Only Samples}
 
@@ -250,6 +303,14 @@ Detailed derivation idea:
 \item[$\rightarrow$] solve for ratio of lag-1 cross-term to lag-0 energy term.
 \end{itemize}
 
+Connection to Yule-Walker form:
+\begin{equation*}
+R_v[1] \approx \alpha R_v[0]
+\quad\Rightarrow\quad
+\hat{\alpha} \approx \frac{\hat{R}_v[1]}{\hat{R}_v[0]}.
+\end{equation*}
+This gives the same estimator and makes the statistical interpretation explicit.
+
 \subsection*{Q2.3 FIR Pre-whitening Filter}
 
 Using $v[n]-\alpha v[n-1]=w[n]$, choose
@@ -264,6 +325,8 @@ h_w[n]=\delta[n]-\hat{\alpha}\delta[n-1].
 This filter cancels the AR(1) memory term and leaves approximately white innovation noise, making matched filtering closer to the optimal AWGN condition.
 
 Frequency-domain view: AR(1) clutter has PSD proportional to $1/|1-\alpha e^{-j\omega}|^2$. Multiplying by $|1-\hat{\alpha}e^{-j\omega}|^2$ flattens this spectrum when $\hat{\alpha}\approx\alpha$.
+
+Therefore the whitened receiver effectively equalizes the clutter color before matched filtering, preventing low-frequency clutter dominance in the correlation output.
 
 \subsection*{Q2.4 Receiver Architectures}
 \begin{itemize}
@@ -284,6 +347,8 @@ Output SNR metric:
 \text{SNR}_{\text{out}} = 10\log_{10}
 \left(\frac{|C[k_{\text{peak}}]|^2}{\mathbb{E}\{|C[k]|^2\,\text{outside}\,[k_{\text{peak}}-50,k_{\text{peak}}+50]\}}\right).
 \end{equation*}
+
+In implementation, the noise floor is estimated from all lags excluding a protection window around the peak ($\pm 50$ samples), so peak sidelobes do not bias the variance estimate.
 
 \begin{figure}[H]
 \centering
@@ -312,6 +377,13 @@ If radar dataset is present, fill results from MATLAB output (Command Window) or
 \item[$\rightarrow$] SNR gain $(B-A)$: $14.48$ dB.
 \end{itemize}
 
+Quantitative conclusion from these values:
+\begin{itemize}
+\item[$\rightarrow$] both receivers localize the target at the same delay (lag $2149$), confirming no bias in target timing,
+\item[$\rightarrow$] whitening improves output SNR by approximately $14.5$ dB, which is a major detection-performance gain,
+\item[$\rightarrow$] the improvement magnitude is consistent with suppression of correlated clutter energy in the matched-filter output.
+\end{itemize}
+
 When both receivers are run on the same dataset, compare:
 \begin{itemize}
 \item[$\rightarrow$] peak lag consistency (target delay estimate),
@@ -321,35 +393,100 @@ When both receivers are run on the same dataset, compare:
 
 If whitening is effective, peak lag should remain consistent while SNR increases. A large lag mismatch would indicate model mismatch, estimation error in $\hat{\alpha}$, or severe non-AR clutter components.
 
+In our results, lag consistency is preserved and SNR increases strongly, so the AR(1)-based pre-whitening model is validated by the measured data.
+
+The PSD figure gives direct physical evidence of this improvement: the raw clutter spectrum is strongly colored (low-frequency dominant), while the whitened clutter is considerably flatter. The overlay correlation figure further shows that whitening primarily lowers the effective noise floor while preserving the target lag location.
+
 \section{Q3. Raised Cosine (RC) Filter}
 
-Given the piecewise raised-cosine spectrum $H_{RC}(f)$, inverse Fourier transform gives the well-known Nyquist pulse:
+In practical digital communication systems, pulse shaping is not only about bandwidth control, but also about controlling Inter-Symbol Interference (ISI). The raised-cosine (RC) spectrum is specifically designed so that, after matched filtering and symbol-rate sampling, neighboring symbols do not interfere. This is why RC filters are fundamental in modem design.
+
+Given roll-off factor $\beta$ and symbol period $T$, the RC frequency response is
 \begin{equation*}
-h_{RC}(t) = \frac{\sin(\pi t/T)}{\pi t/T}
-\cdot
-\frac{\cos(\pi \beta t/T)}{1-(2\beta t/T)^2}.
+H_{RC}(f)=
+\begin{cases}
+T, & |f|\le\dfrac{1-\beta}{2T},\\[4pt]
+\dfrac{T}{2}\left[1+\cos\left(\dfrac{\pi T}{\beta}\left(|f|-\dfrac{1-\beta}{2T}\right)\right)\right], & \dfrac{1-\beta}{2T}<|f|\le\dfrac{1+\beta}{2T},\\[6pt]
+0, & |f|>\dfrac{1+\beta}{2T}.
+\end{cases}
 \end{equation*}
 
-Special values by continuity are:
+Since $H_{RC}(f)$ is real and even, its impulse response is also real and can be obtained using
+\begin{equation*}
+h_{RC}(t)=\int_{-\infty}^{\infty}H_{RC}(f)e^{j2\pi ft}\,df
+=2\int_0^{\infty}H_{RC}(f)\cos(2\pi ft)\,df.
+\end{equation*}
+
+To evaluate this integral, split the spectrum into two parts:
+\begin{itemize}
+\item[$\rightarrow$] flat passband contribution for $0\le f\le \dfrac{1-\beta}{2T}$,
+\item[$\rightarrow$] cosine roll-off contribution for $\dfrac{1-\beta}{2T}<f\le \dfrac{1+\beta}{2T}$.
+\end{itemize}
+
+The passband integral gives the familiar sinc-type term, while the roll-off integral contributes a cosine-modulated correction that introduces the denominator $1-(2\beta t/T)^2$. After simplification, the closed-form RC impulse response is
+\begin{equation*}
+h_{RC}(t)=\frac{\sin(\pi t/T)}{\pi t/T}\cdot\frac{\cos(\pi\beta t/T)}{1-(2\beta t/T)^2}.
+\end{equation*}
+
+This is the standard result used in communication texts and software libraries.
+
+\subsection*{Special Points and Continuity}
+The formula above has removable singularities at specific time instants. Therefore we evaluate limits to obtain finite values:
 \begin{equation*}
 h_{RC}(0)=1,
-\qquad
-h_{RC}\left(\pm\frac{T}{2\beta}\right)=\frac{\beta}{2}\sin\left(\frac{\pi}{2\beta}\right),\;\beta\neq 0.
+\end{equation*}
+and for $\beta\neq 0$,
+\begin{equation*}
+h_{RC}\left(\pm\frac{T}{2\beta}\right)=\frac{\beta}{2}\sin\left(\frac{\pi}{2\beta}\right).
 \end{equation*}
 
-Derivation outline (conceptual): split the inverse transform into flat passband and cosine roll-off band. The flat portion contributes the sinc term, and the roll-off contributes the cosine-modulated denominator term, leading to the compact closed form.
+These values are important in implementation because direct substitution in code can produce a division-by-zero warning if limits are not handled explicitly.
 
-Physical meaning:
+\subsection*{Nyquist ISI Interpretation}
+The RC pulse satisfies the Nyquist zero-ISI condition:
+\begin{equation*}
+h_{RC}(nT)=
+\begin{cases}
+1, & n=0,\\
+0, & n\in\mathbb{Z},\;n\neq 0.
+\end{cases}
+\end{equation*}
+Hence, at ideal symbol-rate sampling instants, each symbol sees only its own pulse and no deterministic interference from neighboring symbols.
+
+\subsection*{Role of Roll-Off Factor $\beta$}
+The roll-off factor controls the bandwidth-time tradeoff:
 \begin{itemize}
-\item[$\rightarrow$] $\beta$ controls excess bandwidth: larger $\beta$ means wider spectrum but shorter time-domain ringing,
-\item[$\rightarrow$] the pulse satisfies the Nyquist zero-ISI criterion at symbol-spaced sampling instants.
+\item[$\rightarrow$] occupied (one-sided) baseband bandwidth is $\dfrac{1+\beta}{2T}$,
+\item[$\rightarrow$] smaller $\beta$ gives tighter spectrum but longer time-domain ringing,
+\item[$\rightarrow$] larger $\beta$ gives wider spectrum but faster decay in time.
 \end{itemize}
+
+So, $\beta$ is a system-level design knob: spectral efficiency pushes toward smaller $\beta$, while timing robustness and practical filter truncation push toward larger $\beta$.
 
 Extreme cases:
 \begin{itemize}
-\item[$\rightarrow$] $\beta \to 0$: spectrum tends to ideal brick-wall shape, time-domain ringing becomes long,
-\item[$\rightarrow$] $\beta \to 1$: transition band is widest, pulse decays faster in time and implementation is more robust to truncation.
+\item[$\rightarrow$] $\beta \to 0$: RC tends to the ideal sinc pulse (minimum bandwidth, maximum time spread),
+\item[$\rightarrow$] $\beta \to 1$: widest transition band, smoother spectral edges, and better time localization.
 \end{itemize}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\includegraphics[width=\linewidth]{q3_rc_impulse_beta_comparison.png}
+\caption{RC impulse responses for different roll-off factors $\beta$.}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\includegraphics[width=\linewidth]{q3_rc_frequency_beta_comparison.png}
+\caption{RC frequency responses for different roll-off factors $\beta$.}
+\end{minipage}
+\end{figure}
+
+\FloatBarrier
+
+From these plots, the design tradeoff is visually clear: smaller $\beta$ compresses bandwidth but increases time-domain ringing, while larger $\beta$ relaxes spectral compactness and yields faster temporal decay.
 
 \section*{How to Reproduce Results}
 Run from assignment folder:
