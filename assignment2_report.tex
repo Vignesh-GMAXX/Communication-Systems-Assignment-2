@@ -4,23 +4,15 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{graphicx}
-\usepackage{listings}
-\usepackage{xcolor}
 \usepackage{float}
 \usepackage{placeins}
 \usepackage{tikz}
+\usepackage{subcaption}
 
 \title{\hspace*{1.5cm}\textbf{EE 341: Communication Systems \newline Assignment 2}}
 \author{G\ Raviteja (23110120) \ Govindu Vignesh (23110122)}
 \date{}
 
-\lstset{
-    language=Matlab,
-    basicstyle=\ttfamily\small,
-    keywordstyle=\color{blue},
-    commentstyle=\color{green!60!black},
-    breaklines=true
-}
 \setlength{\abovedisplayskip}{8pt}
 \setlength{\belowdisplayskip}{8pt}
 
@@ -35,6 +27,7 @@
 \begin{itemize}
 \item \texttt{solve\_q1\_quantizer.m}
 \item \texttt{solve\_q2\_radar.m}
+\item \texttt{solve\_q3\_rc\_plots.m}
 \item \texttt{run\_all.m}
 \end{itemize}
 \item[$\rightarrow$] Figures and summary files are generated directly in the main assignment folder.
@@ -63,188 +56,365 @@ we balance two effects:
 
 Intuition: the OFDM waveform is a sum of many independently modulated subcarriers. By central-limit behavior, the time-domain sample histogram becomes close to Gaussian. This means low-amplitude samples are very common, while large peaks are rare but important. If the quantizer range is too narrow, rare peaks are clipped hard and create large error energy. If range is too wide, clipping reduces but quantization steps become coarse for the majority of samples near zero. Therefore, the best design must trade these two error mechanisms.
 
-\subsection*{Q1.1 Theory: Granular and Overload Noise}
+\subsection*{Q1.1 Derivation of Granular and Overload Noise Power}
 
-For a uniform quantizer with decision boundaries $\{b_k\}$ and reproduction levels $\{q_k\}$,
-the exact granular distortion inside the operating range is
-\begin{equation*}
-P_{q,\text{gran}} = \sum_k \int_{b_k}^{b_{k+1}} (x-q_k)^2 f_X(x)\,dx.
-\end{equation*}
+The OFDM signal amplitude is modeled as a Gaussian random variable 
+$X \sim \mathcal{N}(0, \sigma^2)$ with PDF:
+\begin{equation}
+    f_X(x) = \frac{1}{\sqrt{2\pi}\,\sigma}\,e^{-x^2/2\sigma^2}
+\end{equation}
 
-This expression says: for each quantization cell, we weight squared quantization error by the probability of landing in that cell, then sum over all cells.
+For a uniform mid-tread quantizer with $B = 8$ bits, clipping threshold 
+$\pm V_{\max}$, and loading factor $\gamma = V_{\max}/\sigma$, the step 
+size is:
+\begin{equation}
+    \Delta = \frac{2V_{\max}}{2^B} = \frac{2V_{\max}}{2^8} = \frac{2\gamma\sigma}{256}
+\end{equation}
 
-For a mid-tread uniform quantizer, this exact sum-of-integrals is the rigorous model. In practice, for high-resolution operation, the error within each cell is approximately uniform over $[-\Delta/2,\Delta/2]$, giving per-cell error variance $\Delta^2/12$. This approximation is very accurate when $\Delta$ is small relative to local signal variation scale.
+The total quantization noise power is:
+\begin{equation}
+    P_{q,tot} = P_{q,gran} + P_{q,ol}
+\end{equation}
 
-The overload distortion is caused by clipping beyond $\pm V_{\max}$:
-\begin{equation*}
-P_{q,\text{ol}} = \int_{V_{\max}}^{\infty}(x-V_{\max})^2f_X(x)\,dx
-+\int_{-\infty}^{-V_{\max}}(x+V_{\max})^2f_X(x)\,dx.
-\end{equation*}
+%------------------------------------------------------------------
+\subsubsection*{Overload Noise Power $P_{q,ol}$}
+%------------------------------------------------------------------
 
-Using symmetry:
-\begin{equation*}
-P_{q,\text{ol}} = 2\int_{V_{\max}}^{\infty}(x-V_{\max})^2f_X(x)\,dx.
-\end{equation*}
+When the input exceeds $\pm V_{\max}$, the quantizer clips the output 
+to $\pm V_{\max}$. The resulting error is $(x - V_{\max})$ for 
+$x > V_{\max}$ and $(x + V_{\max})$ for $x < -V_{\max}$. The overload 
+noise power is therefore:
+\begin{equation}
+    P_{q,ol} = \int_{V_{\max}}^{\infty} (x - V_{\max})^2\,f_X(x)\,dx
+             + \int_{-\infty}^{-V_{\max}} (x + V_{\max})^2\,f_X(x)\,dx
+\end{equation}
 
-Define
-\begin{equation*}
-\phi(\gamma)=\frac{1}{\sqrt{2\pi}}e^{-\gamma^2/2},
-\qquad
-Q(\gamma)=\int_{\gamma}^{\infty}\phi(u)\,du.
-\end{equation*}
-Then
-\begin{equation*}
-P_{q,\text{ol}} = 2\sigma^2\left[(1+\gamma^2)Q(\gamma)-\gamma\phi(\gamma)\right].
-\end{equation*}
+By symmetry of $f_X(x)$ about zero, both integrals are equal:
+\begin{equation}
+    P_{q,ol} = \frac{2}{\sqrt{2\pi}\,\sigma}
+               \int_{V_{\max}}^{\infty} (x - V_{\max})^2\,
+               e^{-x^2/2\sigma^2}\,dx
+\end{equation}
 
-Sketch of reduction: set $x=\sigma u$, use $V_{\max}=\gamma\sigma$, and expand $(u-\gamma)^2=u^2-2\gamma u+\gamma^2$. The three Gaussian tail integrals reduce to standard identities involving $Q(\gamma)$ and $\phi(\gamma)$.
+Substituting $u = x/\sigma$, so $x = \sigma u$, $dx = \sigma\,du$, 
+and noting that $V_{\max} = \gamma\sigma$:
+\begin{equation}
+    P_{q,ol} = \frac{2\sigma^2}{\sqrt{2\pi}}
+               \int_{\gamma}^{\infty} (u - \gamma)^2\,
+               e^{-u^2/2}\,du
+\end{equation}
 
-Using standard Gaussian identities,
-\begin{equation*}
-\int_{\gamma}^{\infty}\phi(u)du = Q(\gamma),
-\qquad
-\int_{\gamma}^{\infty}u\phi(u)du = \phi(\gamma),
-\qquad
-\int_{\gamma}^{\infty}u^2\phi(u)du = Q(\gamma)+\gamma\phi(\gamma),
-\end{equation*}
-the overload integral simplifies directly to the compact expression used above.
+Expanding $(u-\gamma)^2 = u^2 - 2\gamma u + \gamma^2$ and splitting 
+into three integrals:
+\begin{equation}
+    P_{q,ol} = 2\sigma^2 \left[
+        \int_{\gamma}^{\infty} u^2\,\frac{e^{-u^2/2}}{\sqrt{2\pi}}\,du
+        \;-\; 2\gamma \int_{\gamma}^{\infty} u\,\frac{e^{-u^2/2}}{\sqrt{2\pi}}\,du
+        \;+\; \gamma^2 \int_{\gamma}^{\infty} \frac{e^{-u^2/2}}{\sqrt{2\pi}}\,du
+    \right]
+\end{equation}
 
-For an 8-bit quantizer, the step size is
-\begin{equation*}
-\Delta = \frac{2V_{\max}}{2^B-1}, \qquad B=8.
-\end{equation*}
-Using the high-resolution approximation, the granular noise becomes
-\begin{equation*}
-P_{q,\text{gran}} \approx \frac{\Delta^2}{12}\,\Pr(|X|\leq V_{\max})
-=\frac{\Delta^2}{12}\left(1-2Q(\gamma)\right),
-\end{equation*}
-which captures that only non-clipped samples contribute to granular distortion.
+The third integral is directly the Q-function by definition:
+\begin{equation}
+    \int_{\gamma}^{\infty} \frac{e^{-u^2/2}}{\sqrt{2\pi}}\,du = Q(\gamma)
+\end{equation}
 
-Total noise power:
-\begin{equation*}
-P_{q,\text{tot}} = P_{q,\text{gran}} + P_{q,\text{ol}}.
-\end{equation*}
+For the second integral, we use $u\,e^{-u^2/2} = 
+-\dfrac{d}{du}\!\left(e^{-u^2/2}\right)$:
+\begin{equation}
+    \int_{\gamma}^{\infty} u\,\frac{e^{-u^2/2}}{\sqrt{2\pi}}\,du
+    = \frac{1}{\sqrt{2\pi}}\Bigl[-e^{-u^2/2}\Bigr]_{\gamma}^{\infty}
+    = \frac{e^{-\gamma^2/2}}{\sqrt{2\pi}}
+    = \phi(\gamma)
+\end{equation}
 
-The corresponding theoretical SQNR is
-\begin{equation*}
-\text{SQNR}_{\text{th}}(\gamma)=10\log_{10}\left(\frac{\sigma^2}{P_{q,\text{tot}}(\gamma)}\right).
-\end{equation*}
-For normalized analysis ($\sigma^2=1$), this reduces to $10\log_{10}(1/P_{q,\text{tot}})$.
+For the first integral, we apply integration by parts with 
+$p = u$ and $dq = u\,e^{-u^2/2}\,du$, giving $dp = du$ and 
+$q = -e^{-u^2/2}$:
+\begin{align}
+    \int_{\gamma}^{\infty} u^2\,\frac{e^{-u^2/2}}{\sqrt{2\pi}}\,du
+    &= \frac{1}{\sqrt{2\pi}}\left(
+        \Bigl[-u\,e^{-u^2/2}\Bigr]_{\gamma}^{\infty}
+        + \int_{\gamma}^{\infty} e^{-u^2/2}\,du
+       \right) \nonumber\\
+    &= \frac{1}{\sqrt{2\pi}}\left(
+        \gamma\,e^{-\gamma^2/2}
+        + \sqrt{2\pi}\,Q(\gamma)
+       \right) \nonumber\\
+    &= \gamma\,\phi(\gamma) + Q(\gamma)
+\end{align}
 
-Hence, small $\gamma$ gives strong clipping (large overload noise), while large $\gamma$ increases $\Delta$ (large granular noise). The optimum $\gamma$ is where this tradeoff is minimized.
+Substituting all three results back:
+\begin{align}
+    P_{q,ol} &= 2\sigma^2\Bigl[
+                 \gamma\phi(\gamma) + Q(\gamma)
+                 - 2\gamma\phi(\gamma)
+                 + \gamma^2 Q(\gamma)
+                \Bigr] \nonumber\\
+             &= 2\sigma^2\Bigl[
+                 (1+\gamma^2)\,Q(\gamma) - \gamma\,\phi(\gamma)
+                \Bigr]
+\end{align}
 
-Expected curve behavior:
-\begin{itemize}
-\item[$\rightarrow$] $P_{q,\text{ol}}$ decreases rapidly with $\gamma$ because Gaussian tails decay fast,
-\item[$\rightarrow$] $P_{q,\text{gran}}$ generally increases with $\gamma$ since $\Delta \propto V_{\max}$,
-\item[$\rightarrow$] total noise is U-shaped versus $\gamma$, producing a single practical optimum.
-\end{itemize}
+\begin{equation}
+\boxed{
+    P_{q,ol} = 2\sigma^2\Bigl[(1+\gamma^2)\,Q(\gamma) 
+               - \gamma\,\phi(\gamma)\Bigr]
+}
+\end{equation}
+
+%------------------------------------------------------------------
+\subsubsection*{Granular Noise Power $P_{q,gran}$}
+%------------------------------------------------------------------
+
+The granular noise arises from rounding within the quantizer's operating 
+range $[-V_{\max}, +V_{\max}]$. For a quantizer with decision boundaries 
+$\{b_k\}$ and reproduction levels $\{q_k\}$, the exact granular distortion is:
+\begin{equation}
+    P_{q,gran} = \sum_{k} \int_{b_k}^{b_{k+1}} 
+                 (x - q_k)^2\,f_X(x)\,dx
+\end{equation}
+
+This expression weights the squared quantization error in each cell by 
+the probability of the input falling in that cell, summed over all 
+$2^B = 256$ quantization intervals. For the $k$-th cell centred at 
+$q_k$, the boundaries are $b_k = q_k - \Delta/2$ and 
+$b_{k+1} = q_k + \Delta/2$. Expanding $(x - q_k)^2$ and using the 
+fact that $f_X(x)$ is approximately constant over one step $\Delta$ 
+when $\Delta \ll \sigma$ (high-resolution approximation):
+\begin{align}
+    \int_{b_k}^{b_{k+1}} (x-q_k)^2\,f_X(x)\,dx 
+    &\approx f_X(q_k)\int_{-\Delta/2}^{\Delta/2} \epsilon^2\,d\epsilon 
+     \nonumber\\
+    &= f_X(q_k)\cdot\frac{\Delta^3}{12}
+\end{align}
+
+Summing over all cells inside $[-V_{\max}, +V_{\max}]$ and replacing 
+$\sum_k f_X(q_k)\,\Delta \approx \Pr(|X| \leq V_{\max}) 
+= 1 - 2Q(\gamma)$:
+\begin{equation}
+    P_{q,gran} \approx \frac{\Delta^2}{12}\,\bigl(1 - 2Q(\gamma)\bigr)
+\end{equation}
+
+Substituting $\Delta = \dfrac{2\gamma\sigma}{2^B}$:
+\begin{equation}
+    P_{q,gran} \approx \frac{1}{12}\left(\frac{2\gamma\sigma}{2^B}
+                \right)^2 \bigl(1 - 2Q(\gamma)\bigr)
+                = \frac{\gamma^2\sigma^2}{3 \cdot 2^{2B}}
+                \bigl(1 - 2Q(\gamma)\bigr)
+\end{equation}
+
+\begin{equation}
+\boxed{
+    P_{q,gran} = \frac{\gamma^2\sigma^2}{3 \cdot 2^{2B}}
+                 \bigl(1 - 2Q(\gamma)\bigr)
+}
+\end{equation}
+%------------------------------------------------------------------
+\subsubsection*{Total Quantization Noise and SQNR}
+%------------------------------------------------------------------
+
+Combining both contributions:
+\begin{equation}
+\boxed{
+    P_{q,tot} = \underbrace{\frac{\gamma^2\sigma^2}{3 \cdot 2^{2B}}
+                \bigl(1-2Q(\gamma)\bigr)}_{\text{granular noise}}
+                +\;
+                \underbrace{2\sigma^2\bigl[(1+\gamma^2)Q(\gamma) 
+                - \gamma\phi(\gamma)\bigr]}_{\text{overload noise}}
+}
+\end{equation}
+
+The Signal-to-Quantization-Noise Ratio is then:
+\begin{equation}
+    \text{SQNR}(\gamma) = 10\log_{10}\!\left(
+        \frac{\sigma^2}{P_{q,tot}(\gamma)}
+    \right) \quad \text{(dB)}
+\end{equation}
+
+where:
+\begin{align*}
+    \phi(\gamma) &= \frac{1}{\sqrt{2\pi}}\,e^{-\gamma^2/2} 
+                 &&\text{(standard normal PDF at } \gamma\text{)}\\
+    Q(\gamma)    &= \int_{\gamma}^{\infty} \frac{1}{\sqrt{2\pi}}\,
+                    e^{-u^2/2}\,du 
+                 &&\text{(Q-function / Gaussian tail probability)}\\
+    \gamma       &= \frac{V_{\max}}{\sigma} 
+                 &&\text{(loading factor)}\\
+    B            &= 8 
+                 &&\text{(quantizer resolution in bits)}
+\end{align*}
 
 \subsection*{Q1.2 Numerical Sweep and Optimal Loading Factor}
 
-We sweep $\gamma$ over the practical range and compute
-\begin{equation*}
-\gamma_{\text{opt}}=\arg\min_{\gamma} P_{q,\text{tot}}(\gamma).
-\end{equation*}
+We sweep the loading factor $\gamma = V_{\max}/\sigma$ over the range 
+$\gamma \in [0.1,\, 7]$ in steps of $0.01$, which covers the physically 
+relevant region for an 8-bit Gaussian quantizer: below $\gamma = 0.1$ the 
+quantizer is severely overloaded, and beyond $\gamma = 7$ the Gaussian tail 
+probability $Q(\gamma)$ is negligibly small so overload noise is essentially 
+zero while granular noise dominates completely.
 
-From the script output,
-\begin{equation*}
-\gamma_{\text{opt,theory}} \approx 3.926,
-\qquad
-\text{SQNR}_{\text{opt,theory}} \approx 40.57\ \text{dB}.
-\end{equation*}
+For each $\gamma$, the theoretical noise powers derived in Q1.1 are evaluated 
+numerically:
+\begin{align}
+    P_{q,gran}(\gamma) &= \frac{\gamma^2 \sigma^2}{3 \cdot 2^{2B}}
+                          \bigl(1 - 2Q(\gamma)\bigr) \\[6pt]
+    P_{q,ol}(\gamma)   &= 2\sigma^2\bigl[(1+\gamma^2)\,Q(\gamma) 
+                          - \gamma\,\phi(\gamma)\bigr] \\[6pt]
+    P_{q,tot}(\gamma)  &= P_{q,gran}(\gamma) + P_{q,ol}(\gamma)
+\end{align}
+with $B = 8$, $\sigma = 1$ (normalised), 
+$\phi(\gamma) = \frac{1}{\sqrt{2\pi}}e^{-\gamma^2/2}$, and 
+$Q(\gamma) = \frac{1}{2}\operatorname{erfc}\!\left(\gamma/\sqrt{2}\right)$.
 
-This optimum is physically reasonable for an 8-bit quantizer under Gaussian excitation: clipping is controlled enough to avoid heavy tail loss, while the step size remains fine for the high-probability central region.
+The optimal loading factor is identified as the $\gamma$ that minimises the 
+total noise power:
+\begin{equation}
+    \gamma_{\text{opt}} = \arg\min_{\gamma}\; P_{q,tot}(\gamma).
+\end{equation}
 
+From the numerical sweep:
+\begin{equation}
+    \gamma_{\text{opt}} \approx 3.926, \qquad 
+    \text{SQNR}_{\text{opt}} \approx 40.57 \text{ dB}.
+\end{equation}
+
+This result is notably lower than the classical $6.02B + 1.76 \approx 49.9$ 
+dB formula for a full-scale sinusoidal input. The difference arises because 
+the Gaussian distribution places significant probability mass in the tails, 
+increasing average distortion even at the optimal clipping level. The 
+sinusoidal formula assumes a perfectly bounded, uniformly distributed 
+amplitude, which is not the case here.
+
+Figure~\ref{fig:noise_components} shows the three noise curves on a 
+log-scale. The crossover point where $P_{q,gran} = P_{q,ol}$ is close to but 
+not exactly at $\gamma_{\text{opt}}$: the true minimum of $P_{q,tot}$ depends 
+on the \emph{rates of change} of both curves, not merely their equality. The 
+SQNR curve in Figure~\ref{fig:sqnr_theory} is visibly asymmetric about the 
+peak: it drops sharply for $\gamma < \gamma_{\text{opt}}$ because overload 
+noise grows rapidly as Gaussian tails are clipped hard, while for 
+$\gamma > \gamma_{\text{opt}}$ granular noise grows only as $\gamma^2$, so 
+the penalty for over-ranging is much milder than for under-ranging.
+
+\vspace{0.5cm}
 Design-logic interpretation:
 \begin{itemize}
-\item[$\rightarrow$] For $\gamma<\gamma_{\text{opt}}$, overload dominates and SQNR drops sharply.
-\item[$\rightarrow$] Around $\gamma_{\text{opt}}$, overload and granular distortions are balanced.
-\item[$\rightarrow$] For $\gamma>\gamma_{\text{opt}}$, clipping is negligible but coarse quantization dominates.
+    \item For $\gamma < \gamma_{\text{opt}}$: overload dominates and SQNR 
+          drops sharply because the Gaussian tails are heavily clipped.
+    \item Around $\gamma_{\text{opt}}$: overload and granular distortions 
+          are balanced at their optimal tradeoff point.
+    \item For $\gamma > \gamma_{\text{opt}}$: clipping is negligible but 
+          coarse quantization dominates and SQNR degrades slowly.
 \end{itemize}
 
-\begin{figure}[H]
-\centering
-\begin{minipage}{0.48\textwidth}
-\centering
-\includegraphics[width=\linewidth]{q1_theoretical_noise_vs_gamma.png}
-\caption{Theoretical granular, overload, and total quantization noise versus $\gamma$.}
-\end{minipage}
-\hfill
-\begin{minipage}{0.48\textwidth}
-\centering
-\includegraphics[width=\linewidth]{q1_theoretical_sqnr_vs_gamma.png}
-\caption{Theoretical SQNR versus loading factor $\gamma$.}
-\end{minipage}
+\begin{figure}[h]
+    \centering
+    
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{q1_theoretical_noise_vs_gamma.png}
+        \caption{Noise components vs $\gamma$}
+        \label{fig:noise_components}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{q1_theoretical_sqnr_vs_gamma.png}
+        \caption{SQNR vs $\gamma$}
+        \label{fig:sqnr_theory}
+    \end{subfigure}
+    
+    \caption{Theoretical quantization performance versus loading factor $\gamma$.}
+    \label{fig:q1_combined}
 \end{figure}
-
-\FloatBarrier
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.75\textwidth]{q2_psd_before_after_whitening.png}
-\caption{PSD comparison of clutter before and after pre-whitening.}
-\end{figure}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.75\textwidth]{q2_receivers_overlay_db.png}
-\caption{Overlay comparison of Receiver A and Receiver B cross-correlation outputs in dB.}
-\end{figure}
-
-\FloatBarrier
 
 \subsection*{Q1.3 Empirical SQNR with OFDM Dataset}
 
-For the measured OFDM sequence, the empirical SQNR is computed as
-\begin{equation*}
-\text{SQNR}_{\text{emp}} = 10\log_{10}\left(\frac{\mathbb{E}[x^2]}{\mathbb{E}[(x-\hat{x})^2]}\right).
-\end{equation*}
+For the measured OFDM sequence, the empirical SQNR at each loading factor 
+$\gamma$ is computed as:
+\begin{equation}
+    \text{SQNR}_{\text{emp}}(\gamma) = 10\log_{10}\!\left(
+    \frac{\mathbb{E}[x^2]}{\mathbb{E}[(x-\hat{x})^2]}\right)
+\end{equation}
+where $x$ are the original unquantized samples and $\hat{x}$ are their 
+quantized counterparts obtained by passing $x$ through an 8-bit uniform 
+mid-tread quantizer with clipping threshold $V_{\max} = \gamma\,\sigma_{\text{emp}}$.
 
-Method used in the experiment:
-\begin{itemize}
-\item[$\rightarrow$] load OFDM samples from \texttt{ofdm\_dataset.mat},
-\item[$\rightarrow$] center data and estimate empirical $\sigma$,
-\item[$\rightarrow$] quantize for each $\gamma$ using $V_{\max}=\gamma\sigma$,
-\item[$\rightarrow$] compare empirical SQNR with the theoretical SQNR curve.
-\end{itemize}
+\subsubsection*{Procedure}
+\begin{enumerate}
+    \item Load the complex baseband samples from \texttt{ofdm\_dataset.mat} 
+          and center the data by subtracting the sample mean.
+    \item Estimate the empirical standard deviation $\sigma_{\text{emp}}$ 
+          from the centered samples.
+    \item Sweep $\gamma$ over the same range as Q1.2, setting 
+          $V_{\max} = \gamma\,\sigma_{\text{emp}}$ at each step.
+    \item Quantize the samples using an 8-bit uniform mid-tread quantizer 
+          with step size $\Delta = 2V_{\max}/2^B$.
+    \item Compute $\text{SQNR}_{\text{emp}}(\gamma)$ at each step and 
+          overlay with the theoretical curve from Q1.2.
+\end{enumerate}
 
-Why this comparison matters: the theoretical model assumes i.i.d. Gaussian samples and ideal quantization behavior. Real OFDM datasets can deviate due to finite packet length, pilot structure, windowing, and implementation details. The gap between curves is therefore a diagnostic, not just an error: it tells how realistic the Gaussian assumption is for the provided waveform.
+\subsubsection*{Numerical Results}
 
-Interpretation guideline:
-\begin{itemize}
-\item[$\rightarrow$] close agreement with theory indicates near-Gaussian amplitude statistics,
-\item[$\rightarrow$] mismatch is expected from finite samples, imperfect Gaussianity, and practical OFDM waveform structure.
-\end{itemize}
+From the provided \texttt{ofdm\_dataset.mat}:
+\begin{equation}
+    \sigma_{\text{emp}} \approx 0.9999995, \qquad
+    \gamma_{\text{opt,emp}} \approx 3.887,  \qquad
+    \text{SQNR}_{\text{opt,emp}} \approx 40.61\ \text{dB}.
+\end{equation}
 
-If the OFDM dataset is available, the script also writes:
-\begin{itemize}
-\item[$\rightarrow$] \texttt{q1\_theory\_vs\_empirical\_sqnr.png}
-\end{itemize}
+The shift in optimal loading factor relative to the theoretical prediction is:
+\begin{equation}
+    \Delta\gamma = \gamma_{\text{opt,emp}} - \gamma_{\text{opt,theory}} 
+    \approx 3.887 - 3.926 = -0.039.
+\end{equation}
 
-Using the provided dataset in this assignment, the empirical results are:
-\begin{equation*}
-\sigma_{\text{emp}} \approx 0.9999995,
-\qquad
-\gamma_{\text{opt,emp}} \approx 3.887,
-\qquad
-\text{SQNR}_{\text{opt,emp}} \approx 40.61\ \text{dB}.
-\end{equation*}
-These values are close to theoretical predictions, which supports the Gaussian approximation for the given OFDM samples.
+The empirical optimal shifts slightly left (toward a narrower clipping range) 
+compared to theory. This means the real OFDM signal has marginally lighter 
+tails than a perfect Gaussian, so less clipping range is needed to achieve 
+the best SQNR. This is physically consistent: practical OFDM waveforms use 
+windowing and guard intervals that slightly reduce the probability of extreme 
+amplitude peaks relative to the pure i.i.d. Gaussian model.
 
-A useful consistency check is the shift in optimum loading factor:
-\begin{equation*}
-\Delta\gamma = \gamma_{\text{opt,emp}}-\gamma_{\text{opt,theory}} \approx -0.039.
-\end{equation*}
-The small shift indicates mild practical non-idealities, but no major mismatch with the Gaussian-design assumption.
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.65\textwidth]{q1_theory_vs_empirical_sqnr.png}
-\caption{Theoretical and empirical SQNR comparison for the provided OFDM dataset.}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.6\textwidth]{q1_theory_vs_empirical_sqnr.png}
+    \caption{Theoretical and empirical SQNR versus loading factor $\gamma$ 
+             for the provided OFDM dataset.}
+    \label{fig:sqnr_empirical}
 \end{figure}
 
-\FloatBarrier
+\subsubsection*{Interpretation}
+
+The close agreement between the two curves (peak difference $< 0.1$ dB, 
+$\Delta\gamma \approx -0.039$) confirms that the Gaussian i.i.d. amplitude 
+model is an excellent approximation for this OFDM dataset. Any residual 
+discrepancy has three physical origins:
+
+\begin{itemize}
+    \item \textbf{Finite sample effects:} The empirical histogram is 
+          estimated from a finite number of samples, so the tails of the 
+          distribution are not perfectly resolved. This introduces small 
+          statistical fluctuations in $\text{SQNR}_{\text{emp}}$.
+
+    \item \textbf{Pilot subcarriers and guard bands:} Practical 5G OFDM 
+          frames contain pilot tones and null subcarriers that do not carry 
+          data. These reduce the effective number of independently modulated 
+          subcarriers, slightly weakening the central-limit argument and 
+          causing minor departures from Gaussianity.
+
+    \item \textbf{Windowing and cyclic prefix:} Time-domain windowing 
+          applied at the transmitter to control spectral leakage modifies the 
+          amplitude envelope of the OFDM symbol, reducing the probability of 
+          large peaks (lower PAPR) and therefore shifting the empirical 
+          optimal $\gamma$ slightly below the theoretical value.
+\end{itemize}
+
+Overall, the gap between curves acts as a diagnostic rather than an error: 
+its smallness here validates the Gaussian design assumption, while a large 
+gap would have indicated a fundamental modelling mismatch requiring a 
+non-Gaussian quantizer design
+
 
 \section{Q2. Radar Detection in Colored Noise}
 
@@ -367,7 +537,50 @@ In implementation, the noise floor is estimated from all lags excluding a protec
 
 \FloatBarrier
 
-If radar dataset is present, fill results from MATLAB output (Command Window) or \texttt{q2\_summary.mat}:
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\textwidth]{q2_psd_before_after_whitening.png}
+\caption{Global normalized PSD of clutter before and after pre-whitening.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\textwidth]{q2_receivers_overlay_db.png}
+\caption{Global normalized overlay of Receiver A and Receiver B cross-correlation outputs.}
+\end{figure}
+
+\FloatBarrier
+
+\subsection*{Q2.5 Additional Requested Report Figures}
+To include all requested report outputs for Q2, three additional plots are generated and interpreted below:
+\begin{itemize}
+\item[$\rightarrow$] Windowed lag plot over $1 \leq \text{lag} \leq 1000$ in absolute dB,
+\item[$\rightarrow$] PSD in normalized angular frequency $\omega \in [-\pi,\pi]$,
+\item[$\rightarrow$] Extended-lag view over $[-5000, 5000]$ using zero-padding outside valid support.
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.86\textwidth]{q2_receivers_window_1_1000_db.png}
+\caption{Windowed-lag comparison for Receiver A and Receiver B ($1\leq\text{lag}\leq1000$).}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.78\textwidth]{q2_psd_raw_vs_whitened_rad.png}
+\caption{PSD of raw and whitened signal in normalized angular frequency ($\times\pi$ rad/sample).}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.86\textwidth]{q2_receivers_extended_lag_db.png}
+\caption{Extended-lag comparison with explicit zero-padding outside valid cross-correlation support.}
+\end{figure}
+
+\FloatBarrier
+
+\subsection*{Q2.6 Final Numerical Results and Interpretation}
+From MATLAB output and \texttt{q2\_summary.mat}:
 \begin{itemize}
 \item[$\rightarrow$] Estimated AR parameter: $\hat{\alpha} \approx 0.94935 + j\,0.00303$.
 \item[$\rightarrow$] Receiver A peak lag: $2149$ samples.
@@ -377,25 +590,14 @@ If radar dataset is present, fill results from MATLAB output (Command Window) or
 \item[$\rightarrow$] SNR gain $(B-A)$: $14.48$ dB.
 \end{itemize}
 
-Quantitative conclusion from these values:
+Hence, both receivers estimate the same target delay while Receiver B achieves a large output-SNR improvement. This confirms that AR(1)-based pre-whitening suppresses colored clutter effectively without biasing lag estimation.
+
+Plot-level interpretation summary:
 \begin{itemize}
-\item[$\rightarrow$] both receivers localize the target at the same delay (lag $2149$), confirming no bias in target timing,
-\item[$\rightarrow$] whitening improves output SNR by approximately $14.5$ dB, which is a major detection-performance gain,
-\item[$\rightarrow$] the improvement magnitude is consistent with suppression of correlated clutter energy in the matched-filter output.
+\item[$\rightarrow$] The PSD plots show strong low-frequency color in raw clutter and a much flatter spectrum after whitening.
+\item[$\rightarrow$] The receiver overlay plots show a lower effective background floor for Receiver B with peak location preserved.
+\item[$\rightarrow$] The windowed and extended-lag views make local fluctuations and finite-support behavior visually explicit for reporting.
 \end{itemize}
-
-When both receivers are run on the same dataset, compare:
-\begin{itemize}
-\item[$\rightarrow$] peak lag consistency (target delay estimate),
-\item[$\rightarrow$] output SNR improvement in Receiver B,
-\item[$\rightarrow$] sidelobe/noise-floor suppression in dB plots.
-\end{itemize}
-
-If whitening is effective, peak lag should remain consistent while SNR increases. A large lag mismatch would indicate model mismatch, estimation error in $\hat{\alpha}$, or severe non-AR clutter components.
-
-In our results, lag consistency is preserved and SNR increases strongly, so the AR(1)-based pre-whitening model is validated by the measured data.
-
-The PSD figure gives direct physical evidence of this improvement: the raw clutter spectrum is strongly colored (low-frequency dominant), while the whitened clutter is considerably flatter. The overlay correlation figure further shows that whitening primarily lowers the effective noise floor while preserving the target lag location.
 
 \section{Q3. Raised Cosine (RC) Filter}
 
@@ -489,20 +691,16 @@ Extreme cases:
 From these plots, the design tradeoff is visually clear: smaller $\beta$ compresses bandwidth but increases time-domain ringing, while larger $\beta$ relaxes spectral compactness and yields faster temporal decay.
 
 \section*{How to Reproduce Results}
-Run from assignment folder:
-\begin{lstlisting}
-run('run_all.m')
-\end{lstlisting}
+Run from assignment folder: \texttt{run('run\_all.m')}.
 
 Current workspace status:
 \begin{itemize}
-\item[$\rightarrow$] Q1 theoretical figures compile and generate correctly.
-\item[$\rightarrow$] Q1 theory optimum values are verified: $\gamma_{\text{opt}}\approx 3.926$, SQNR $\approx 40.57$ dB.
-\item[$\rightarrow$] Q1 empirical curve has been generated using \texttt{ofdm\_dataset.mat}.
-\item[$\rightarrow$] Q2 final numeric outputs and plots have been generated using \texttt{cazac\_radar\_dataset.mat}.
+\item[$\rightarrow$] Q1 report outputs generated: theoretical noise plot, theoretical SQNR plot, and theory-vs-empirical SQNR plot.
+\item[$\rightarrow$] Q2 report outputs generated: Receiver A/B cross-correlation plots, PSD plots, overlay plot, windowed-lag plot, and extended-lag plot.
+\item[$\rightarrow$] Q3 report outputs generated: RC impulse-response and RC frequency-response comparison plots.
+\item[$\rightarrow$] Q1 and Q2 summary files generated: \texttt{q1\_summary.mat}, \texttt{q2\_summary.mat}.
 \end{itemize}
 
 \section*{Conclusion}
 The assignment highlights a common communication-systems design pattern: statistical modeling and receiver/ADC structure must be co-designed. In Q1, the best loading factor appears from balancing two competing distortions rather than minimizing either one alone. In Q2, optimal detection in correlated clutter is achieved by transforming the noise statistics (whitening) before matched filtering. In Q3, raised-cosine design shows the fundamental time-frequency tradeoff in pulse shaping through $\beta$.
-
 \end{document}
